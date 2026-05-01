@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── CLIENTS & CONTACTS ────────────────────────────────
+
+enum DocumentType {
+  RUC
+  DNI
+  CE
+}
+
+enum ClientType {
+  PERSONA_NATURAL
+  PERSONA_JURIDICA
+}
+
+model Client {
+  id             String       @id @default(cuid())
+  documentType   DocumentType
+  documentNumber String       @unique
+  clientType     ClientType
+  businessName   String
+  tradeName      String?
+  email          String?
+  phone          String?
+  address        String?
+  district       String?
+  city           String?
+  department     String?
+  creditDays     Int          @default(0)
+  creditLimit    Decimal?     @db.Decimal(10, 2)
+  notes          String?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  contacts Contact[]
+  quotes   Quote[]
+  invoices Invoice[]
+
+  @@index([documentNumber])
+  @@index([businessName])
+  @@map("clients")
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  position  String?
+  email     String?
+  phone     String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("contacts")
+}
+
+// ─── CALCULATOR / QUOTES ────────────────────────────────
+
+enum ServiceType {
+  ESTAMPADO
+  BLOCKS
+  ANILLADO
+}
+
+enum QuoteStatus {
+  BORRADOR
+  ENVIADA
+  APROBADA
+  RECHAZADA
+  VENCIDA
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  quoteNumber String      @unique
+  clientId    String
+  status      QuoteStatus @default(BORRADOR)
+  validUntil  DateTime?
+  notes       String?
+  subtotal    Decimal     @db.Decimal(10, 2)
+  igv         Decimal     @db.Decimal(10, 2)
+  total       Decimal     @db.Decimal(10, 2)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  client   Client      @relation(fields: [clientId], references: [id])
+  items    QuoteItem[]
+  invoices Invoice[]
+
+  @@index([clientId])
+  @@index([quoteNumber])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          String      @id @default(cuid())
+  quoteId     String
+  serviceType ServiceType
+  description String
+  calcInput   Json        // service-specific variables entered by user
+  calcDetail  Json        // full cost breakdown snapshot
+  quantity    Int         @default(1)
+  unitPrice   Decimal     @db.Decimal(10, 2)
+  totalPrice  Decimal     @db.Decimal(10, 2)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@map("quote_items")
+}
+
+// ─── CONFIGURABLE PRICING ──────────────────────────────
+// Each service has cost items. Each cost item can be:
+//   - Variable: has a quantityBase and unitCost (cost = quantity / quantityBase * unitCost * totalPrice)
+//   - Fixed: has a fixedCost (flat fee regardless of quantity)
+// Price changes are tracked via CostItemVersion (version history).
+
+model CostItem {
+  id          String      @id @default(cuid())
+  serviceType ServiceType
+  name        String      // e.g. "Impresion Tira y Retira", "Bond A4", "Diseño"
+  key         String      @unique // machine-readable key e.g. "blocks_doble_impresion"
+  costType    String      // "variable" or "fixed"
+  // Current pricing (denormalized from latest version for fast reads)
+  totalPrice  Decimal?    @db.Decimal(10, 4) // total price for quantityBase units
+  quantityBase Int?       // base quantity (e.g. 1000)
+  unitCost    Decimal?    @db.Decimal(10, 6) // price per single unit
+  fixedCost   Decimal?    @db.Decimal(10, 2) // for fixed cost items
+  active      Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  versions CostItemVersion[]
+
+  @@index([serviceType])
+  @@map("cost_items")
+}
+
+model CostItemVersion {
+  id           String   @id @default(cuid())
+  costItemId   String
+  totalPrice   Decimal? @db.Decimal(10, 4)
+  quantityBase Int?
+  unitCost     Decimal? @db.Decimal(10, 6)
+  fixedCost    Decimal? @db.Decimal(10, 2)
+  reason       String?  // why the price changed
+  createdAt    DateTime @default(now())
+
+  costItem CostItem @relation(fields: [costItemId], references: [id], onDelete: Cascade)
+
+  @@index([costItemId])
+  @@index([createdAt])
+  @@map("cost_item_versions")
+}
+
+model PricingConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  label     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pricing_config")
+}
+
+// ─── INVOICING & PAYMENTS ──────────────────────────────
+
+enum InvoiceType {
+  BOLETA
+  FACTURA
+}
+
+enum InvoiceStatus {
+  EMITIDA
+  PAGADA
+  PARCIAL
+  ANULADA
+  VENCIDA
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  invoiceType   InvoiceType
+  series        String
+  correlative   Int
+  clientId      String
+  quoteId       String?
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  status        InvoiceStatus @default(EMITIDA)
+  subtotal      Decimal       @db.Decimal(10, 2)
+  igv           Decimal       @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  amountPaid    Decimal       @default(0) @db.Decimal(10, 2)
+  notes         String?
+  sunatHash     String?
+  sunatCdr      String?
+  sunatStatus   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  client   Client        @relation(fields: [clientId], references: [id])
+  quote    Quote?        @relation(fields: [quoteId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@index([clientId])
+  @@index([invoiceNumber])
+  @@index([status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(10, 2)
+  totalPrice  Decimal @db.Decimal(10, 2)
+  sortOrder   Int     @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  YAPE
+  PLIN
+  OTRO
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  invoiceId     String
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  reference     String?
+  paymentDate   DateTime      @default(now())
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("payments")
+}
