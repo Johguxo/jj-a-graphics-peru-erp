@@ -153,8 +153,8 @@ export function InvoiceForm({ clients, quotes }: Props) {
             id="series"
             name="series"
             label="Serie SUNAT"
-            placeholder={invoiceType === 'FACTURA' ? 'F001' : 'B001'}
-            defaultValue={invoiceType === 'FACTURA' ? 'F001' : 'B001'}
+            placeholder={invoiceType === 'FACTURA' ? 'E001' : 'B001'}
+            defaultValue={invoiceType === 'FACTURA' ? 'E001' : 'B001'}
             required
           />
           <Input
