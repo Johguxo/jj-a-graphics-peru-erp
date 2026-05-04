@@ -1,6 +1,8 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { Bars3Icon } from '@heroicons/react/24/outline'
+import { useMobileNav } from './shell'
 
 const pageTitles: Record<string, string> = {
   '/': 'Inicio',
@@ -30,10 +32,21 @@ function getPageTitle(pathname: string): string {
 export function Header() {
   const pathname = usePathname()
   const title = getPageTitle(pathname)
+  const { toggle } = useMobileNav()
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center border-b border-border bg-card-bg px-6">
-      <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+    <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b border-border bg-card-bg px-4 sm:px-6">
+      <button
+        type="button"
+        onClick={toggle}
+        className="lg:hidden -ml-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground hover:bg-border/50"
+        aria-label="Abrir menu"
+      >
+        <Bars3Icon className="h-6 w-6" />
+      </button>
+      <h1 className="text-base sm:text-lg font-semibold text-foreground truncate">
+        {title}
+      </h1>
     </header>
   )
 }

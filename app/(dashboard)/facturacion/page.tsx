@@ -108,9 +108,9 @@ export default async function FacturacionPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted">{total} comprobantes</p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/facturacion/cuentas-por-cobrar">
             <Button variant="secondary">Cuentas por Cobrar</Button>
           </Link>
